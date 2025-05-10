@@ -64,6 +64,10 @@ void CheckInputTensors(const std::vector <torch::Tensor> &tensors) {
 }
 ```
 
+= CUDA stream
+
+Remember to always get the current CUDA stream via `at::cuda::getCurrentCUDAStream()` and pass it as the 4-th parameter in the `<<<gridDim, blockDim, sharedMemorySizeBytes, stream>>>` kernel call.
+
 = CUDA toolkit version problem
 Most "symbol not found" problem are caused by compiler / assembler / library version mismatch. Let me elaborate on this a bit:
 
