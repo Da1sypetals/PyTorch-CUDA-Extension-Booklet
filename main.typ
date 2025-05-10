@@ -68,6 +68,8 @@ void CheckInputTensors(const std::vector <torch::Tensor> &tensors) {
 
 Remember to always get the current CUDA stream via `at::cuda::getCurrentCUDAStream()` and pass it as the 4-th parameter in the `<<<gridDim, blockDim, sharedMemorySizeBytes, stream>>>` kernel call.
 
+This is especially important when your operator is used in distributed training, where `at::cuda::getCurrentCUDAStream()` automatically selects the correct stream for you.
+
 = CUDA toolkit version problem
 Most "symbol not found" problem are caused by compiler / assembler / library version mismatch. Let me elaborate on this a bit:
 
@@ -138,7 +140,20 @@ I could not find documentation for these APIs, so if you want to know more, you 
 
 #image("handles.png", width: 80%)
 
+== Buffers
+Many CUSPARSE operations need buffers. If you need to make multiple CUSPARSE API calls with similar buffer size, it is bad practice to allocate right before the CUSPARE API call and deallocate right after since `cudaMalloc` and `cudaFree` are quite slow, which may cause your GPU to starve (verify this with VizTracer).
 
+A better practice should be pre-allocating the buffer and pass its pointer into where the CUSPARSE API is called, either through `torch.empty()` or a bare `cudaMalloc` call in C++ code.
+
+== Batched Matrix Multiplication
+
+Refer to #link("https://github.com/NVIDIA/CUDALibrarySamples/blob/master/cuSPARSE/spmm_csr_batched/spmm_csr_batched_example.c", "this example") to see how to perform batched matrix multiplication in CUSPARSE.
+
+Tricks:
+- To broadcast, set stride to 0.
+- It is possible to *broadcast `rowptr` but not `colind` and `values`*.
+
+Check documentation for details.
 
 = Tensor Options
 
