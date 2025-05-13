@@ -142,7 +142,8 @@ I could not find documentation for these APIs, so if you want to know more, you 
 == Buffers
 Many CUSPARSE operations need buffers. If you need to make multiple CUSPARSE API calls with similar buffer size, it is bad practice to allocate right before the CUSPARE API call and deallocate right after since `cudaMalloc` and `cudaFree` are quite slow, which may cause your GPU to starve (verify this with VizTracer).
 
-A better practice should be pre-allocating the buffer and pass its pointer into where the CUSPARSE API is called, either through `torch.empty()` or a bare `cudaMalloc` call in C++ code.
+A better practice should be pre-allocating the buffer and pass its pointer into where the CUSPARSE API is called through `torch.empty()`.
+
 
 == Batched Matrix Multiplication
 
