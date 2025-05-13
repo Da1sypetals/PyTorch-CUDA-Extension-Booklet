@@ -73,38 +73,37 @@ This is especially important when your operator is used in distributed training,
 = CUDA toolkit version problem
 Most "symbol not found" problem are caused by compiler / assembler / library version mismatch. Let me elaborate on this a bit:
 
-+ PyTorch has an important version information attached to it: *_The version of CUDA that torch is compiled on (let's call it CVT, Cuda Version of Torch_, for the sake of simplicity)*. The torch installation comes with its own CUDA toolkit (that matches CVCT) with *no nvcc, ptxas*.
-+ If you are to write custom CUDA extension to PyTorch, *it will use the nvcc and ptxas in your system `PATH`, and libraries like CUBLAS or CUSPARSE in `LD_LIBRARY_PATH`*. Let's call this CUDA toolkit version *_CVE, Cuda Version of Extension_*.
++ PyTorch has an important version information attached to it: *_The version of CUDA that torch is compiled on (let's call it VT, cuda Version of Torch_, for the sake of simplicity)*. The torch installation comes with its own CUDA toolkit (that matches VT) with *no nvcc, ptxas*.
++ If you are to write custom CUDA extension to PyTorch, *it will use the nvcc and ptxas in your system `PATH`, and libraries like CUBLAS or CUSPARSE in `LD_LIBRARY_PATH`*. Let's call this CUDA toolkit version *_VE, cuda Version of Extension_*.
 
-+ When you try to compile a CUDA extension, #text(size: 14pt, weight: "bold")[Make sure that your CVT and CVE *perfectly match* (NOT major version match).]
++ When you try to compile a CUDA extension, #text(size: 14pt, weight: "bold")[Make sure that your VT and VE *perfectly match* (NOT major version match).]
   - When you compile your extension, PyTorch hints you that a minor version mismatch should not be a problem. *Remember, everything should not happen will eventually happen.*
 
-= Debug layer by layer
 
-A CUDA extension is roughly split into 4 parts, from the bottom to the top namely:
-- CUDA kernel
-- C++ wrapper
-- data passed from Python (PyTorch) to C++
-- Python wrapper
+= Memory Management in PyTorch
 
-== CUDA kernel
-Debugging CUDA kernel is a very very difficult problem and we shall not discuss it here.
+== Allocation
 
-== C++ wrapper
-The first thing I want to hint you is that do not dereference a pointer pointing to device in host functions. You should always mark device pointers with a `d_` prefix in variable names, or wrap it with `thrust::device_ptr`.
+When you need a buffer on HBM (e.g., for CUSPARSE or CUBLAS), your first instinct might be `cudaMalloc` and `cudaFree`. However, these force synchronization between CPU and GPU, which can starve the GPU.
 
-`printf`, `std::cout` or `gdb` will assist you in the journey.
+Here's the key: PyTorch isn't just an autograd tool. It's a _deep learning operating system_ that manages VRAM internally with a pooling and caching mechanism.
 
-== data passed from Python (PyTorch) to C++
-Refer to Pybind11 docs and try to answer these questions:
+Using the PyTorch allocator is straightforward. Follow these steps:
+- Set `dtype` to `torch::kInt8` and create a buffer tensor via `torch::empty`
+- Get the pointer with `buffer_tensor.data_ptr<int8_t>()`
 
-- How various Python types are represented in Pybind11 API;
-- How to properly configure the function prototype in Pybind11?
+This gives you a pointer to the buffer. Here's a complete code snippet:
+```cpp
+auto buffer_options = torch::TensorOptions().device(your_device).dtype(torch::kInt8);
+auto buffer_tensor = torch::empty({buffer_size}, buffer_options);
+void *buffer_ptr = buffer_tensor.data_ptr<int8_t>();
+```
+Remember do not call `cudaFree` on the pointer. RAII semantics will give the memory back to the allocator when destructor is called.
 
 
-== Python Wrapper
-Ask LLMs. LLMs know python much better than I do.
+PyTorch's memory management is pretty much like a combination of OS memory management (buddy system, SLAB) and JVM or .net runtime (garbage collection, memory pool, caching and reusing memory blocks), but manages VRAM instead of a RAM.
 
+I recommend reading #link("https://zhuanlan.zhihu.com/p/680769942", "this post (Chinese)") for a deeper dive into how PyTorch manages memory.
 
 = Using CUBLAS, CUSPARSE, CUSolverDn, _etc_.
 
@@ -201,6 +200,37 @@ For an exhaustive list of device and dtype, you may want to refer to:
 - https://github.com/pytorch/pytorch/blob/main/torch/csrc/api/include/torch/types.h
 
 - https://github.com/pytorch/pytorch/blob/main/c10/core/DeviceType.h
+
+
+
+
+
+= Debug layer by layer
+
+A CUDA extension is roughly split into 4 parts, from the bottom to the top namely:
+- CUDA kernel
+- C++ wrapper
+- data passed from Python (PyTorch) to C++
+- Python wrapper
+
+== CUDA kernel
+Debugging CUDA kernel is a very very difficult problem and we shall not discuss it here.
+
+== C++ wrapper
+The first thing I want to hint you is that do not dereference a pointer pointing to device in host functions. You should always mark device pointers with a `d_` prefix in variable names, or wrap it with `thrust::device_ptr`.
+
+`printf`, `std::cout` or `gdb` will assist you in the journey.
+
+== data passed from Python (PyTorch) to C++
+Refer to Pybind11 docs and try to answer these questions:
+
+- How various Python types are represented in Pybind11 API;
+- How to properly configure the function prototype in Pybind11?
+
+
+== Python Wrapper
+Ask LLMs. LLMs know python much better than I do.
+
 
 
 
